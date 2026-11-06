@@ -1,0 +1,427 @@
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
+index 63df27a673..5741338f27 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
+@@ -2633,6 +2633,8 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
+         }
+     }
+     
++    private let conceptsSwipe = ConceptsSwipeController()
++
+     private var playedSwipeToReplyHaptic = false
+     @objc private func swipeToReplyGesture(_ recognizer: ChatSwipeToReplyRecognizer) {
+         var offset: CGFloat = 0.0
+@@ -2656,6 +2658,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
+                     self.swipeToReplyFeedback?.prepareImpact()
+                 }
+                 self.item?.controllerInteraction.cancelInteractiveKeyboardGestures()
++                self.conceptsSwipe.began(node: self)
+             case .changed:
+                 var translation = recognizer.translation(in: self.view)
+                 func rubberBandingOffset(offset: CGFloat, bandingStart: CGFloat) -> CGFloat {
+@@ -2713,19 +2716,25 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
+                         self.playedSwipeToReplyHaptic = true
+                         self.swipeToReplyFeedback?.impact(.heavy)
+                     }
++
++                    if case .reply = self.currentSwipeAction, let item = self.item {
++                        self.conceptsSwipe.changed(node: self, item: item, centerNode: swipeToReplyNode, translation: recognizer.translation(in: self.view), threshold: swipeOffset)
++                    }
+                 }
+             case .cancelled, .ended:
+                 self.swipeToReplyFeedback = nil
+-                
++
+                 let translation = recognizer.translation(in: self.view)
+-                
+-                let gestureRecognized: Bool
++
++                var gestureRecognized: Bool
+                 if recognizer.allowBothDirections {
+                     gestureRecognized = abs(translation.x) > swipeOffset
+                 } else {
+                     gestureRecognized = translation.x < -swipeOffset
+                 }
+-            
++                if let recognized = self.conceptsSwipe.ended(node: self, item: self.item, isEnded: recognizer.state == .ended) {
++                    gestureRecognized = recognized
++                }
+                 if case .ended = recognizer.state, gestureRecognized {
+                     if let item = self.item {
+                         if let currentSwipeAction = currentSwipeAction {
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
+index d7da5d1024..cd6a527992 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
+@@ -697,7 +702,8 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+     private var deliveryFailedNode: ChatMessageDeliveryFailedNode?
+     private var swipeToReplyNode: ChatMessageSwipeToReplyNode?
+     private var swipeToReplyFeedback: HapticFeedback?
+-    
++    private let conceptsSwipe = ConceptsSwipeController()
++
+     private var nameAvatarNode: AvatarNode?
+     private var nameNode: TextNode?
+     private var nameButtonNode: HighlightTrackingButtonNode?
+@@ -7289,6 +7312,7 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+                     self.swipeToReplyFeedback?.prepareImpact()
+                 }
+                 self.item?.controllerInteraction.cancelInteractiveKeyboardGestures()
++                self.conceptsSwipe.began(node: self)
+             case .changed:
+                 var translation = recognizer.translation(in: self.view)
+                 func rubberBandingOffset(offset: CGFloat, bandingStart: CGFloat) -> CGFloat {
+@@ -7348,17 +7372,24 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+                         self.playedSwipeToReplyHaptic = true
+                         self.swipeToReplyFeedback?.impact(.heavy)
+                     }
++
++                    if case .reply = self.currentSwipeAction, let item = self.item {
++                        self.conceptsSwipe.changed(node: self, item: item, centerNode: swipeToReplyNode, translation: recognizer.translation(in: self.view), threshold: swipeOffset)
++                    }
+                 }
+             case .cancelled, .ended:
+                 self.swipeToReplyFeedback = nil
+-                
++
+                 let translation = recognizer.translation(in: self.view)
+-                let gestureRecognized: Bool
++                var gestureRecognized: Bool
+                 if recognizer.allowBothDirections {
+                     gestureRecognized = abs(translation.x) > swipeOffset
+                 } else {
+                     gestureRecognized = translation.x < -swipeOffset
+                 }
++                if let recognized = self.conceptsSwipe.ended(node: self, item: self.item, isEnded: recognizer.state == .ended) {
++                    gestureRecognized = recognized
++                }
+                 if case .ended = recognizer.state, gestureRecognized {
+                     if let item = self.item {
+                         if let currentSwipeAction = currentSwipeAction {
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageItemView/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageItemView/BUILD
+index affbb0c2d1..c628d24bf8 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageItemView/BUILD
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageItemView/BUILD
+@@ -24,6 +24,7 @@ swift_library(
+         "//submodules/TelegramUI/Components/Chat/ChatMessageItemCommon",
+         "//submodules/TextFormat",
+         "//submodules/TelegramUI/Components/Chat/ChatMessageItem",
++        "//submodules/TelegramUI/Components/Chat/ChatMessageSwipeToReplyNode",
+         "//submodules/TelegramUI/Components/Chat/ChatMessageTransitionNode",
+         "//submodules/TelegramAnimatedStickerNode",
+     ],
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageSwipeToReplyNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageSwipeToReplyNode/BUILD
+index 150eeba1ad..07215b7eb2 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageSwipeToReplyNode/BUILD
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageSwipeToReplyNode/BUILD
+@@ -14,7 +14,11 @@ swift_library(
+         "//submodules/AsyncDisplayKit",
+         "//submodules/AppBundle",
+         "//submodules/WallpaperBackgroundNode",
++        "//submodules/SSignalKit/SwiftSignalKit",
++        "//submodules/TelegramCore",
+         "//submodules/TelegramUI/Components/ChatControllerInteraction",
++        "//submodules/ComponentFlow",
++        "//submodules/TelegramUI/Components/GlassBackgroundComponent",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageSwipeToReplyNode/Sources/ChatMessageSwipeToReplyNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageSwipeToReplyNode/Sources/ChatMessageSwipeToReplyNode.swift
+index f57eab10f6..4a7ca25970 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageSwipeToReplyNode/Sources/ChatMessageSwipeToReplyNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageSwipeToReplyNode/Sources/ChatMessageSwipeToReplyNode.swift
+@@ -27,46 +27,27 @@ public final class ChatMessageSwipeToReplyNode: ASDisplayNode {
+     
+     private var absolutePosition: (CGRect, CGSize)?
+     
++    // Концепт «многодействийный свайп»: копия кружка в оверлее окна меняет цвет стрелки и гасит подложку.
++    private let action: Action
++    private let alternateForegroundNode: ASImageNode
++    private var alternateMix: CGFloat = 0.0
++    private var outlineMorphLayer: CAShapeLayer?
++    public private(set) var currentProgress: CGFloat = 0.0
++    /// Круговую волну успеха рисует рейка своей формой (по капсуле); здесь остаётся только пульс масштаба.
++    public var circularWaveEnabled = true
++    
+     public init(fillColor: UIColor, enableBlur: Bool, foregroundColor: UIColor, backgroundNode: WallpaperBackgroundNode?, action: ChatMessageSwipeToReplyNode.Action) {
+         self.backgroundNode = NavigationBackgroundNode(color: fillColor, enableBlur: enableBlur)
+         self.backgroundNode.isUserInteractionEnabled = false
+ 
+         self.foregroundNode = ASImageNode()
+         self.foregroundNode.isUserInteractionEnabled = false
++        self.alternateForegroundNode = ASImageNode()
++        self.alternateForegroundNode.isUserInteractionEnabled = false
++        self.alternateForegroundNode.alpha = 0.0
+ 
+-        self.foregroundNode.image = generateImage(CGSize(width: 33.0, height: 33.0), rotatedContext: { size, context in
+-            context.clear(CGRect(origin: CGPoint(), size: size))
+-            
+-            switch action {
+-            case .reply:
+-                if let image = UIImage(bundleImageName: "Chat/Message/ShareIcon") {
+-                    let imageRect = CGRect(origin: CGPoint(x: floor((size.width - image.size.width) / 2.0), y: floor((size.height - image.size.height) / 2.0)), size: image.size)
+-                    
+-                    context.translateBy(x: imageRect.midX, y: imageRect.midY)
+-                    context.scaleBy(x: -1.0, y: -1.0)
+-                    context.translateBy(x: -imageRect.midX, y: -imageRect.midY)
+-                    context.clip(to: imageRect, mask: image.cgImage!)
+-                    context.setFillColor(foregroundColor.cgColor)
+-                    context.fill(imageRect)
+-                }
+-            case .like, .unlike:
+-                if let image = UIImage(bundleImageName: action == .like ? "Chat/Reactions/SwipeActionHeartFilled" : "Chat/Reactions/SwipeActionHeartBroken") {
+-                    let imageRect = CGRect(origin: CGPoint(x: floor((size.width - image.size.width) / 2.0), y: floor((size.height - image.size.height) / 2.0)), size: image.size)
+-                    
+-                    context.translateBy(x: imageRect.midX, y: imageRect.midY)
+-                    context.scaleBy(x: 1.0, y: -1.0)
+-                    context.translateBy(x: -imageRect.midX, y: -imageRect.midY)
+-                    if case .like = action {
+-                        context.translateBy(x: 0.0, y: -1.0)
+-                    } else {
+-                        context.translateBy(x: 0.5, y: -1.0)
+-                    }
+-                    context.clip(to: imageRect, mask: image.cgImage!)
+-                    context.setFillColor(foregroundColor.cgColor)
+-                    context.fill(imageRect)
+-                }
+-            }
+-        })
++        self.action = action
++        self.foregroundNode.image = ChatMessageSwipeToReplyNode.makeForegroundImage(action: action, foregroundColor: foregroundColor)
+         
+         self.maskNode = ASDisplayNode()
+         self.progressLayer = SimpleShapeLayer()
+@@ -84,12 +65,14 @@ public final class ChatMessageSwipeToReplyNode: ASDisplayNode {
+         self.maskNode.layer.addSublayer(self.semiFillLayer)
+         
+         self.addSubnode(self.foregroundNode)
++        self.addSubnode(self.alternateForegroundNode)
+         
+         let backgroundFrame = CGRect(origin: CGPoint(), size: size).insetBy(dx: -22.0, dy: -22.0)
+         
+         self.backgroundNode.frame = backgroundFrame
+         self.backgroundNode.update(size: self.backgroundNode.bounds.size, cornerRadius: self.backgroundNode.bounds.height / 2.0, transition: .immediate)
+         self.foregroundNode.frame = CGRect(origin: CGPoint(), size: size)
++        self.alternateForegroundNode.frame = CGRect(origin: CGPoint(), size: size)
+                 
+         self.progressLayer.strokeColor = UIColor.white.cgColor
+         self.progressLayer.fillColor = UIColor.clear.cgColor
+@@ -132,6 +115,42 @@ public final class ChatMessageSwipeToReplyNode: ASDisplayNode {
+         }
+     }
+     
++    private static func makeForegroundImage(action: Action, foregroundColor: UIColor) -> UIImage? {
++        return generateImage(CGSize(width: 33.0, height: 33.0), rotatedContext: { size, context in
++            context.clear(CGRect(origin: CGPoint(), size: size))
++            
++            switch action {
++            case .reply:
++                if let image = UIImage(bundleImageName: "Chat/Message/ShareIcon") {
++                    let imageRect = CGRect(origin: CGPoint(x: floor((size.width - image.size.width) / 2.0), y: floor((size.height - image.size.height) / 2.0)), size: image.size)
++                    
++                    context.translateBy(x: imageRect.midX, y: imageRect.midY)
++                    context.scaleBy(x: -1.0, y: -1.0)
++                    context.translateBy(x: -imageRect.midX, y: -imageRect.midY)
++                    context.clip(to: imageRect, mask: image.cgImage!)
++                    context.setFillColor(foregroundColor.cgColor)
++                    context.fill(imageRect)
++                }
++            case .like, .unlike:
++                if let image = UIImage(bundleImageName: action == .like ? "Chat/Reactions/SwipeActionHeartFilled" : "Chat/Reactions/SwipeActionHeartBroken") {
++                    let imageRect = CGRect(origin: CGPoint(x: floor((size.width - image.size.width) / 2.0), y: floor((size.height - image.size.height) / 2.0)), size: image.size)
++                    
++                    context.translateBy(x: imageRect.midX, y: imageRect.midY)
++                    context.scaleBy(x: 1.0, y: -1.0)
++                    context.translateBy(x: -imageRect.midX, y: -imageRect.midY)
++                    if case .like = action {
++                        context.translateBy(x: 0.0, y: -1.0)
++                    } else {
++                        context.translateBy(x: 0.5, y: -1.0)
++                    }
++                    context.clip(to: imageRect, mask: image.cgImage!)
++                    context.setFillColor(foregroundColor.cgColor)
++                    context.fill(imageRect)
++                }
++            }
++        })
++    }
++    
+     override public func didLoad() {
+         super.didLoad()
+         
+@@ -142,9 +161,12 @@ public final class ChatMessageSwipeToReplyNode: ASDisplayNode {
+         }
+     }
+     
++    /// Постоянный масштаб поверх анимаций успеха (клон Reply в капсуле рейки действий крупнее штатного кружка).
++    public var baseScale: CGFloat = 1.0
+     private var animatedWave = false
+     public func updateProgress(_ progress: CGFloat) {
+         let progress = max(0.0, min(1.0, progress))
++        self.currentProgress = progress
+         var foregroundProgress = min(1.0, progress * 1.2)
+         var scaleProgress = 0.65 + foregroundProgress * 0.35
+         
+@@ -161,8 +183,10 @@ public final class ChatMessageSwipeToReplyNode: ASDisplayNode {
+         
+         self.layer.sublayerTransform = CATransform3DMakeScale(scaleProgress, scaleProgress, 1.0)
+         
+-        self.foregroundNode.alpha = foregroundProgress
++        self.foregroundNode.alpha = foregroundProgress * (1.0 - self.alternateMix)
+         self.foregroundNode.transform = CATransform3DMakeScale(foregroundProgress, foregroundProgress, 1.0)
++        self.alternateForegroundNode.alpha = foregroundProgress * self.alternateMix
++        self.alternateForegroundNode.transform = CATransform3DMakeScale(foregroundProgress, foregroundProgress, 1.0)
+         
+         if progress == 1.0 {
+             self.playSuccessAnimation()
+@@ -173,14 +197,20 @@ public final class ChatMessageSwipeToReplyNode: ASDisplayNode {
+         guard !self.animatedWave else {
+             return
+         }
+-        self.layer.transform = CATransform3DMakeScale(1.1, 1.1, 1.0)
+-        self.layer.animateScale(from: 1.0, to: 1.1, duration: 0.2, completion: { [weak self] _ in
+-            self?.layer.transform = CATransform3DMakeScale(1.0, 1.0, 1.0)
+-            self?.layer.animateScale(from: 1.1, to: 1.0, duration: 0.15)
++        let base = self.baseScale
++        self.layer.transform = CATransform3DMakeScale(base * 1.1, base * 1.1, 1.0)
++        self.layer.animateScale(from: base, to: base * 1.1, duration: 0.2, completion: { [weak self] _ in
++            self?.layer.transform = CATransform3DMakeScale(base, base, 1.0)
++            self?.layer.animateScale(from: base * 1.1, to: base, duration: 0.15)
+         })
+         
+         self.animatedWave = true
+         
++        if !self.circularWaveEnabled {
++            self.progressLayer.opacity = 0.0
++            return
++        }
++        
+         var lineWidth = self.progressLayer.lineWidth
+         self.progressLayer.lineWidth = 0.0
+         self.progressLayer.animate(from: lineWidth as NSNumber, to: 0.0 as NSNumber, keyPath: "lineWidth", timingFunction: CAMediaTimingFunctionName.linear.rawValue, duration: 0.3, completion: { _ in
+@@ -208,6 +238,112 @@ public final class ChatMessageSwipeToReplyNode: ASDisplayNode {
+         self.fillLayer.animate(from: path, to: targetPath, keyPath: "path", timingFunction: CAMediaTimingFunctionName.linear.rawValue, duration: 0.3)
+     }
+     
++    /// Контур контурной стрелки Reply (`Chat/Context Menu/Reply`, PDF 24×24, вписан в 22 pt по центру кружка 33 pt):
++    /// внешний контур залит целиком, внутренний «вырез» растёт от точки (`innerScale` 0) до полного размера (1).
++    private static func outlineMorphPath(innerScale s: CGFloat) -> CGPath {
++        let k: CGFloat = 22.0 / 24.0
++        let origin: CGFloat = 5.5
++        let o: (CGFloat, CGFloat) -> CGPoint = { x, y in
++            return CGPoint(x: origin + x * k, y: origin + y * k)
++        }
++        let center = CGPoint(x: 12.0654, y: 12.3686)
++        let i: (CGFloat, CGFloat) -> CGPoint = { x, y in
++            return o(center.x + (x - center.x) * s, center.y + (y - center.y) * s)
++        }
++        let path = UIBezierPath()
++        path.move(to: o(11.6650, 8.3493))
++        path.addCurve(to: o(20.1893, 18.7208), controlPoint1: o(17.3842, 8.6001), controlPoint2: o(20.2782, 12.1420))
++        path.addCurve(to: o(19.7529, 19.4603), controlPoint1: o(20.1852, 19.0272), controlPoint2: o(20.0191, 19.3086))
++        path.addCurve(to: o(18.5908, 19.1668), controlPoint1: o(19.3480, 19.6913), controlPoint2: o(18.8351, 19.5591))
++        path.addCurve(to: o(18.5731, 19.1375), controlPoint1: o(18.5847, 19.1572), controlPoint2: o(18.5788, 19.1475))
++        path.addCurve(to: o(11.6650, 15.6776), controlPoint1: o(17.3358, 16.9674), controlPoint2: o(15.0610, 15.8090))
++        path.addLine(to: o(11.6650, 18.3459))
++        path.addCurve(to: o(11.3499, 19.1427), controlPoint1: o(11.6650, 18.6419), controlPoint2: o(11.5523, 18.9267))
++        path.addCurve(to: o(9.7032, 19.1958), controlPoint1: o(10.9099, 19.6121), controlPoint2: o(10.1726, 19.6359))
++        path.addLine(to: o(2.9343, 12.8499))
++        path.addCurve(to: o(2.8811, 12.7968), controlPoint1: o(2.9071, 12.8239), controlPoint2: o(2.9071, 12.8239))
++        path.addCurve(to: o(2.9343, 11.1501), controlPoint1: o(2.4411, 12.3274), controlPoint2: o(2.4649, 11.5901))
++        path.addLine(to: o(9.7032, 4.8042))
++        path.addCurve(to: o(10.5000, 4.4891), controlPoint1: o(9.9191, 4.6018), controlPoint2: o(10.2040, 4.4891))
++        path.addCurve(to: o(11.6650, 5.6541), controlPoint1: o(11.1434, 4.4891), controlPoint2: o(11.6650, 5.0107))
++        path.addLine(to: o(11.6650, 8.3493))
++        path.close()
++        // вырез
++        path.move(to: i(11.0000, 9.6650))
++        path.addCurve(to: i(10.3350, 9.0000), controlPoint1: i(10.6327, 9.6650), controlPoint2: i(10.3350, 9.3673))
++        path.addLine(to: i(10.3350, 6.0350))
++        path.addLine(to: i(3.9723, 12.0000))
++        path.addLine(to: i(10.3350, 17.9650))
++        path.addLine(to: i(10.3350, 15.0000))
++        path.addCurve(to: i(11.0000, 14.3350), controlPoint1: i(10.3350, 14.6327), controlPoint2: i(10.6327, 14.3350))
++        path.addCurve(to: i(18.8228, 17.2069), controlPoint1: i(14.5034, 14.3350), controlPoint2: i(17.1304, 15.2887))
++        path.addCurve(to: i(11.0000, 9.6650), controlPoint1: i(18.4849, 12.1064), controlPoint2: i(15.9223, 9.6650))
++        path.close()
++        return path.cgPath
++    }
++
++    /// Концепт: залитая стрелка превращается в контурную — внутри заливки раскрывается вырез по форме стрелки.
++    public func playOutlineMorph(color: UIColor, duration: Double) {
++        let layer = CAShapeLayer()
++        layer.frame = CGRect(origin: .zero, size: CGSize(width: 33.0, height: 33.0))
++        layer.fillColor = color.cgColor
++        layer.fillRule = .evenOdd
++        let from = ChatMessageSwipeToReplyNode.outlineMorphPath(innerScale: 0.001)
++        let to = ChatMessageSwipeToReplyNode.outlineMorphPath(innerScale: 1.0)
++        layer.path = from
++        self.layer.addSublayer(layer)
++        self.outlineMorphLayer = layer
++        self.alternateMix = 1.0
++        ContainedViewLayoutTransition.animated(duration: 0.06, curve: .linear).updateAlpha(node: self.foregroundNode, alpha: 0.0)
++        layer.animateAlpha(from: 0.0, to: 1.0, duration: 0.06)
++        // Сначала мгновение стоит заливка, потом внутри раскрывается вырез по форме стрелки.
++        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06, execute: { [weak layer] in
++            guard let layer else {
++                return
++            }
++            layer.path = to
++            layer.animate(from: from, to: to, keyPath: "path", timingFunction: CAMediaTimingFunctionName.linear.rawValue, duration: duration, mediaTimingFunction: CAMediaTimingFunction(controlPoints: 0.0, 0.4, 0.0, 1.0))
++        })
++    }
++
++    /// Концепт: цвет стрелки плавно меняется на `color` (mix = 1) или возвращается к исходному (mix = 0).
++    public func setAlternateForeground(color: UIColor?, outlineIconName: String? = nil, duration: Double) {
++        if let color, self.alternateForegroundNode.image == nil {
++            if let outlineIconName, let icon = UIImage(bundleImageName: outlineIconName) {
++                self.alternateForegroundNode.image = generateImage(size, rotatedContext: { size, context in
++                    context.clear(CGRect(origin: .zero, size: size))
++                    let fitted = icon.size.width > 0.0 ? min(22.0 / icon.size.width, 22.0 / icon.size.height) : 1.0
++                    let imageSize = CGSize(width: icon.size.width * fitted, height: icon.size.height * fitted)
++                    let imageRect = CGRect(origin: CGPoint(x: floor((size.width - imageSize.width) / 2.0), y: floor((size.height - imageSize.height) / 2.0)), size: imageSize)
++                    context.translateBy(x: imageRect.midX, y: imageRect.midY)
++                    context.scaleBy(x: 1.0, y: -1.0)
++                    context.translateBy(x: -imageRect.midX, y: -imageRect.midY)
++                    context.clip(to: imageRect, mask: icon.cgImage!)
++                    context.setFillColor(color.cgColor)
++                    context.fill(imageRect)
++                })
++            } else {
++                self.alternateForegroundNode.image = ChatMessageSwipeToReplyNode.makeForegroundImage(action: self.action, foregroundColor: color)
++            }
++        }
++        let mix: CGFloat = color == nil ? 0.0 : 1.0
++        self.alternateMix = mix
++        let base = max(0.0, min(1.0, self.currentProgress * 1.2))
++        let transition: ContainedViewLayoutTransition = duration > 0.0 ? .animated(duration: duration, curve: .easeInOut) : .immediate
++        transition.updateAlpha(node: self.foregroundNode, alpha: base * (1.0 - mix))
++        transition.updateAlpha(node: self.alternateForegroundNode, alpha: base * mix)
++    }
++    
++    /// Концепт: подложка кружка (с кольцом и волной успеха) гаснет, пока под ним растёт капсула.
++    public func setPlateAlpha(_ alpha: CGFloat, duration: Double) {
++        let transition: ContainedViewLayoutTransition = duration > 0.0 ? .animated(duration: duration, curve: .easeInOut) : .immediate
++        if let backgroundContent = self.backgroundContent {
++            transition.updateAlpha(layer: backgroundContent.layer, alpha: alpha)
++        } else {
++            transition.updateAlpha(node: self.backgroundNode, alpha: alpha)
++        }
++    }
++    
+     public func updateAbsoluteRect(_ rect: CGRect, within containerSize: CGSize) {
+         self.absolutePosition = (rect, containerSize)
+     }
+diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
+index 5fe58bb..27ba338 100644
+--- a/submodules/TelegramUI/Sources/ChatController.swift
++++ b/submodules/TelegramUI/Sources/ChatController.swift
+@@ -7872,6 +7872,8 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+         
+         self.didAppear = true
+         
++        ConceptsSwipeActions.enableIfNeeded(context: self.context)
++        
+         self.chatDisplayNode.historyNode.experimentalSnapScrollToItem = false
+         self.chatDisplayNode.historyNode.canReadHistory.set(self.computedCanReadHistoryPromise.get())
+         self.chatDisplayNode.historyNode.areContentAnimationsEnabled = true

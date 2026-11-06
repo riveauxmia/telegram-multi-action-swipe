@@ -1,0 +1,131 @@
+diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/AndroidUtilities.java b/TMessagesProj/src/main/java/org/telegram/messenger/AndroidUtilities.java
+index efa8e29..421c6fb 100644
+--- a/TMessagesProj/src/main/java/org/telegram/messenger/AndroidUtilities.java
++++ b/TMessagesProj/src/main/java/org/telegram/messenger/AndroidUtilities.java
+@@ -3606,6 +3606,7 @@ public class AndroidUtilities {
+     }
+ 
+     public static boolean shouldShowClipboardToast() {
++        if (ConceptsDemo.ENABLED) return true; // concepts: плашка «скопировано», как в iOS-ролике (системная всплывает за кадром)
+         return (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || !OneUIUtilities.hasBuiltInClipboardToasts()) && Build.VERSION.SDK_INT < 32;
+     }
+ 
+diff --git a/TMessagesProj/src/main/java/org/telegram/tgnet/ConnectionsManager.java b/TMessagesProj/src/main/java/org/telegram/tgnet/ConnectionsManager.java
+index 778af48..caf6824 100644
+--- a/TMessagesProj/src/main/java/org/telegram/tgnet/ConnectionsManager.java
++++ b/TMessagesProj/src/main/java/org/telegram/tgnet/ConnectionsManager.java
+@@ -297,10 +297,12 @@ public class ConnectionsManager extends BaseController {
+     }
+ 
+     public long getCurrentTimeMillis() {
++        if (org.telegram.messenger.ConceptsDemo.ENABLED) return org.telegram.messenger.ConceptsDemo.nowMillis(); // concepts: часы демо 9:41
+         return native_getCurrentTimeMillis(currentAccount);
+     }
+ 
+     public int getCurrentTime() {
++        if (org.telegram.messenger.ConceptsDemo.ENABLED) return org.telegram.messenger.ConceptsDemo.now(); // concepts: часы демо 9:41
+         return native_getCurrentTime(currentAccount);
+     }
+ 
+@@ -396,6 +398,7 @@ public class ConnectionsManager extends BaseController {
+     }
+ 
+     private void sendRequestInternal(TLObject object, RequestDelegate onComplete, RequestDelegateTimestamp onCompleteTimestamp, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket, int flags, int datacenterId, int connectionType, boolean immediate, int requestToken) {
++        if (org.telegram.messenger.ConceptsDemo.handleRequest(currentAccount, object, onComplete, onCompleteTimestamp)) return; // concepts: офлайн-демо
+         if (BuildVars.LOGS_ENABLED) {
+             FileLog.d("send request " + object + " with token = " + requestToken);
+         }
+@@ -622,6 +625,7 @@ public class ConnectionsManager extends BaseController {
+     }
+ 
+     public int getConnectionState() {
++        if (org.telegram.messenger.ConceptsDemo.ENABLED) return ConnectionStateConnected; // concepts: офлайн-демо
+         if (connectionState == ConnectionStateConnected && isUpdating) {
+             return ConnectionStateUpdating;
+         }
+@@ -844,6 +848,7 @@ public class ConnectionsManager extends BaseController {
+     }
+ 
+     public static void onLogout(final int currentAccount) {
++        if (org.telegram.messenger.ConceptsDemo.ENABLED) return; // concepts: демо-аккаунт не разлогинивать
+         AndroidUtilities.runOnUIThread(() -> {
+             AccountInstance accountInstance = AccountInstance.getInstance(currentAccount);
+             if (accountInstance.getUserConfig().getClientUserId() != 0) {
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
+index 87afb39..f9581d4 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
+@@ -1390,7 +1390,7 @@ public class ChatActivity extends BaseFragment implements
+ 
+     public void showHeaderItem(boolean show) {
+         if (show) {
+-            if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer())) {
++            if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer()) && !org.telegram.messenger.ConceptsDemo.ENABLED) { // concepts: без скрепки в шапке
+                 if (attachItem != null) {
+                     attachItem.setVisibility(View.VISIBLE);
+                 }
+@@ -2322,7 +2322,7 @@ public class ChatActivity extends BaseFragment implements
+ 
+         @Override
+         public void onAttachButtonHidden() {
+-            if (actionBar.isSearchFieldVisible()) {
++            if (actionBar.isSearchFieldVisible() || org.telegram.messenger.ConceptsDemo.ENABLED) { // concepts: в демо «⋮» не превращается в скрепку
+                 return;
+             }
+             if (editTextItem != null && !isEditTextItemVisibilitySuppressed) {
+@@ -4847,7 +4847,7 @@ public class ChatActivity extends BaseFragment implements
+             }
+ 
+             private void drawReplyButton(Canvas canvas) {
+-                if (slidingView == null || Thread.currentThread() != Looper.getMainLooper().getThread()) {
++                if (slidingView == null || Thread.currentThread() != Looper.getMainLooper().getThread() || ConceptsSwipeActions.hidesReplyButton(slidingView)) { // concepts: кружок заменяет капсула
+                     return;
+                 }
+                 Paint chatActionBackgroundPaint = getThemedPaint(Theme.key_paint_chatActionBackground);
+@@ -5089,6 +5089,7 @@ public class ChatActivity extends BaseFragment implements
+                             wasTrackingVibrate = false;
+                         }
+                         slidingViewSetOffset(dx);
++                        ConceptsSwipeActions.move(ChatActivity.this, this, slidingView, e, dx); // concepts: многодействийный свайп
+                         MessageObject messageObject = getSlidingMessageObject();
+                         if (messageObject != null && (messageObject.isRoundVideo() || messageObject.isVideo())) {
+                             updateTextureViewPosition(false, false);
+@@ -5099,7 +5100,7 @@ public class ChatActivity extends BaseFragment implements
+                         invalidate();
+                     }
+                 } else if (slidingView != null && (e == null || e.getPointerId(0) == startedTrackingPointerId && (e.getAction() == MotionEvent.ACTION_CANCEL || e.getAction() == MotionEvent.ACTION_UP || e.getAction() == MotionEvent.ACTION_POINTER_UP))) {
+-                    if (e != null && e.getAction() != MotionEvent.ACTION_CANCEL && Math.abs(getSlidingNonAnimationTranslationX(false)) >= AndroidUtilities.dp(50)) {
++                    if (!ConceptsSwipeActions.release(ChatActivity.this, e) && e != null && e.getAction() != MotionEvent.ACTION_CANCEL && Math.abs(getSlidingNonAnimationTranslationX(false)) >= AndroidUtilities.dp(50)) { // concepts: выбранный слот вместо ответа
+                         MessageObject message = getSlidingMessageObject();
+                         final boolean allowReplyOnOpenTopic = canSendMessageToTopic(message);
+                         if (
+@@ -33600,6 +33601,9 @@ public class ChatActivity extends BaseFragment implements
+         MediaController.saveFile(path, getParentActivity(), messageObject.isVideo() ? 1 : 0, null, null);
+     }
+ 
++    void conceptsHideUndo() { if (undoView != null) undoView.hide(true, 1); } // concepts: плашка прошлого действия уходит
++    void conceptsPerformOption(MessageObject m, MessageObject.GroupedMessages g, int option) { selectedObject = m; selectedObjectGroup = g; processSelectedOption(option); } // concepts: действие слота свайпа
++
+     private void processSelectedOption(int option) {
+         if (selectedObject == null || getParentActivity() == null) {
+             return;
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
+index f5fb910..0a72548 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
+@@ -413,6 +413,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
+         AndroidUtilities.checkDisplaySize(this, getResources().getConfiguration());
+         currentAccount = UserConfig.selectedAccount;
+         registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
++        org.telegram.messenger.ConceptsDemo.onLaunch(currentAccount, getIntent()); // concepts: офлайн-демо
+         if (!UserConfig.getInstance(currentAccount).isClientActivated()) {
+             Intent intent = getIntent();
+             boolean isProxy = false;
+@@ -591,6 +592,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
+                 MainTabsActivity mainTabsActivity = new MainTabsActivity();
+                 actionBarLayout.addFragmentToStack(mainTabsActivity);
+             }
++            if (savedInstanceState == null) org.telegram.messenger.ConceptsDemo.onLaunchStack(this, currentAccount); // concepts: сразу открыть чат демо
+ 
+             try {
+                 if (savedInstanceState != null) {
